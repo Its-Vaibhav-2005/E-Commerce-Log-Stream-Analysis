@@ -4,17 +4,15 @@ import time
 import uuid 
 import datetime
 
-from kafka import KafkaProducer
+from confluent_kafka import Producer
 
 BootstrapServers = 'localhost:29092'
 TopicName = 'raw_events'
 
 
-Producer = KafkaProducer(
-    bootstrap_servers=BootstrapServers,
-    key_serializer=lambda k: k.encode('utf-8') if k else None,
-    value_serializer=lambda v: json.dumps(v).encode('utf-8') if v else None
-)
+producer = Producer({
+    'bootstrap.servers': BootstrapServers
+})
 
 EVENT_TYPES = ['PAGE_VIEW', "ADD_TO_CART", "PURCHASE"]
 INVALID_EVENTS = ["CLICK", "VIEW", "PAY"]
@@ -26,6 +24,10 @@ def randomTimeStamp():
     randomSec = random.uniform(0, (now - past).total_seconds())
 
     return past + datetime.timedelta(seconds=randomSec)
+
+def deliveryReport(err, msg):
+    if err is not None:
+        print(f"Delivery failed: {err}")
 
 def generateEvent():
     isInvalid  = random.random() < 0.25
@@ -65,14 +67,22 @@ def generateEvent():
 
     return event['customer_id'], event
 
+
 print("Starting Kafka Producer . . .")
 
-while True:
-    key, value = generateEvent()
-    Producer.send(
-        topic = TopicName, 
-        key = key,
-        value = value
-    )
-    print(f"Produced event | Key: {key:} | Is Valid : {value['is_valid']} | Timestamp: {value['timestamp']}")
-    time.sleep(1)
+try:
+    while True:
+        key, value = generateEvent()
+        producer.produce(
+            topic=TopicName,
+            key=key.encode('utf-8') if key else None,
+            value=json.dumps(value).encode('utf-8'),
+            callback=deliveryReport
+        )
+        producer.poll(0)
+        print(f"Produced event | Key: {key:} | Is Valid : {value['is_valid']} | Timestamp: {value['timestamp']}")
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("\nStopping producer . . .")
+finally:
+    producer.flush()

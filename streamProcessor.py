@@ -1,5 +1,5 @@
 import json
-from kafka import KafkaConsumer, KafkaProducer
+from confluent_kafka import Consumer, Producer
 
 
 BootstrapServers = 'localhost:29092'
@@ -9,22 +9,22 @@ GROUP_ID = 'silver-stream-processor'
 
 VALID_EVENT_TYPES = ['PAGE_VIEW', "ADD_TO_CART", "PURCHASE"]
 
-consumer = KafkaConsumer(
-    RAW_TOPIC,
-    bootstrap_servers=BootstrapServers,
-    group_id = GROUP_ID,
-    auto_offset_reset='earliest',
-    enable_auto_commit=True,
-    key_deserializer=lambda k: k.decode('utf-8') if k else None,
-    value_deserializer=lambda v: json.loads(v.decode('utf-8'))
-)
+consumer = Consumer({
+    'bootstrap.servers': BootstrapServers,
+    'group.id': GROUP_ID,
+    'auto.offset.reset': 'earliest',
+    'enable.auto.commit': True
+})
+consumer.subscribe([RAW_TOPIC])
 
-producer = KafkaProducer(
-    bootstrap_servers=BootstrapServers,
-    key_serializer=lambda k: k.encode('utf-8') if k else None,
-    value_serializer=lambda v: json.dumps(v).encode('utf-8') if v else None
-)
+producer = Producer({
+    'bootstrap.servers': BootstrapServers
+})
 
+
+def deliveryReport(err, msg):
+    if err is not None:
+        print(f"Delivery failed: {err}")
 
 def isValidEvent(event):
     if not event.get("customer_id"):
@@ -39,16 +39,37 @@ def isValidEvent(event):
         return False
     return True
 
-for msg in consumer:
-    key = msg.key
-    event = msg.value
 
-    if isValidEvent(event):
-        producer.send(
-            topic = PRODUCED_TOPIC,
-            key=key,
-            value=event
-        )
-        print(f"Forwarded valid event   | Timestamp: {event['timestamp']}   |    Key: {key} ")
-    else:
-        print(f"Discarded invalid event | Timestamp: {event['timestamp']}   |    Key: {key} ")
+try:
+    while True:
+        msg = consumer.poll(1.0)
+
+        if msg is None:
+            continue
+
+        if msg.error():
+            print(f"Consumer error: {msg.error()}")
+            continue
+
+        key = msg.key().decode('utf-8') if msg.key() else None
+        event = json.loads(msg.value().decode('utf-8'))
+
+        if isValidEvent(event):
+            producer.produce(
+                topic=PRODUCED_TOPIC,
+                key=key.encode('utf-8') if key else None,
+                value=json.dumps(event).encode('utf-8'),
+                callback=deliveryReport
+            )
+
+            print(f"Forwarded valid event   | Timestamp: {event['timestamp']} | Key: {key}")
+
+        else:
+            print(f"Discarded invalid event | Timestamp: {event['timestamp']} | Key: {key}")
+
+        producer.poll(0)
+except KeyboardInterrupt:
+    print("Shutting down stream processor...")
+finally:
+    consumer.close()
+    producer.flush()
