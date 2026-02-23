@@ -16,7 +16,8 @@ consumer = Consumer({
     'auto.offset.reset': 'earliest',
     'enable.auto.commit': False,
     'fetch.min.bytes': 50000,
-    'fetch.wait.max.ms': 500
+    'fetch.wait.max.ms': 500,
+    "log_level": 3
 })
 
 consumer.subscribe([TopicName])
@@ -81,6 +82,9 @@ try:
             except Exception as e:
                 print(f"Error flushing buffer to DB: {e}")
                 Connection.rollback()
+        elif len(buffer)%100 == 0:
+            print(f"Buffer size: {len(buffer)} records. Waiting to flush...")
+        
 
 except KeyboardInterrupt:
     print("\nStopping loader...")

@@ -32,7 +32,7 @@ def deliveryReport(err, msg):
 def generateEvent():
     isInvalid  = random.random() < 0.25
 
-    customerId = f"CUSTOMER_{random.randint(26,31)}"
+    customerId = f"CUSTOMER_{random.randint(2705,3105)}"
     eventType = random.choice(EVENT_TYPES)
 
     amount = round(random.uniform(200, 5000), 2)
@@ -81,7 +81,7 @@ try:
         )
         producer.poll(0)
         print(f"Produced event | Key: {key:} | Is Valid : {value['is_valid']} | Timestamp: {value['timestamp']}")
-        time.sleep(1)
+        time.sleep(.5)
 except KeyboardInterrupt:
     print("\nStopping producer . . .")
 finally:
